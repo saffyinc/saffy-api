@@ -19,6 +19,7 @@ return new class extends Migration
             $table->date('publish_date');
             $table->string('reading_time');
             $table->string('publication_image_path');
+            $table->string('publication_video_path');
             $table->boolean('isArchive')->default(0)->nullable();
             $table->text('content');
             $table->timestamps();

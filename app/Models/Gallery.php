@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Vinkla\Hashids\Facades\Hashids;
+use App\Models\GalleryMedia;
 
 class Gallery extends Model
 {
@@ -28,4 +29,5 @@ class Gallery extends Model
     public function getIdAttribute($value){
         return Hashids::encode($value);
     }
+
 }

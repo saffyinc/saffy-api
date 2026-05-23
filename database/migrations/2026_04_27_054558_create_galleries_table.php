@@ -24,7 +24,7 @@ return new class extends Migration
             $table->string('img_path');
             $table->boolean('isFeatured')->default(0);
             $table->boolean('isArchive')->default(0);
-            $table->enum('category', ['featured','fashion','gifts','home','kitchen','stationaries','supported','christmas','toys']);
+            $table->enum('category', ['fashion','gifts','home','kitchen','stationaries','supported','christmas','toys']);
             $table->timestamps();
         });
     }

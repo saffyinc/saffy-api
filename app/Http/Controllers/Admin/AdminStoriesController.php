@@ -26,12 +26,19 @@ class AdminStoriesController extends Controller
             'date' => 'required|date',
             'timeRange' => 'required|string',
             'title' => 'required|string',
-            'image' => 'required|image',
+            'image' => 'required|image|mimes:jpg,jpeg,png,webp|max:2048',
+            'video' => 'nullable|mimes:mp4,webm,ogg,mov|max:51200',
         ]);
 
-        $file = $request->file('image');
+        $imageFile = $request->file('image');
+        $imagePath = $imageFile->store('Stories/Images', 'public');
 
-        $path = $file->store('Stories', 'public');
+        $videoPath = null;
+
+        if ($request->hasFile('video')) {
+            $videoFile = $request->file('video');
+            $videoPath = $videoFile->store('Stories/Videos', 'public');
+        }
 
         Stories::create([
             'type' => $request->category,
@@ -39,14 +46,17 @@ class AdminStoriesController extends Controller
             'author' => $request->author,
             'publish_date' => $request->date,
             'reading_time' => $request->timeRange,
-            'publication_image_path' => $path,
+            'publication_image_path' => $imagePath,
+            'publication_video_path' => $videoPath,
             'content' => $request->content,
         ]);
 
         return response()->json([
             'message' => 'Story created successfully.',
-            'path' => $path,
-            'url' => asset('storage/' . $path),
+            'image_path' => $imagePath,
+            'image_url' => asset('storage/' . $imagePath),
+            'video_path' => $videoPath,
+            'video_url' => $videoPath ? asset('storage/' . $videoPath) : null,
         ]);
     }
 
@@ -132,8 +142,6 @@ class AdminStoriesController extends Controller
 
     public function update(Request $request, $id)
     {
-
-
         $request->validate([
             'author' => 'nullable|string',
             'category' => 'nullable|in:news,stories',
@@ -141,14 +149,13 @@ class AdminStoriesController extends Controller
             'date' => 'nullable|date',
             'timeRange' => 'nullable|string',
             'title' => 'nullable|string',
-            'image' => 'nullable|image',
+            'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+            'video' => 'nullable|file|mimes:mp4,webm,ogg,mov|max:102400',
         ]);
-
 
         $decodedId = HashIds::decode($id)[0] ?? null;
         $story = Stories::findOrFail($decodedId);
 
-        // Update only provided fields
         if ($request->filled('category')) {
             $story->type = $request->category;
         }
@@ -173,24 +180,39 @@ class AdminStoriesController extends Controller
             $story->content = $request->content;
         }
 
-        // Handle image only if new one uploaded
         if ($request->hasFile('image')) {
-            // Delete old image
             if ($story->publication_image_path) {
                 Storage::disk('public')->delete($story->publication_image_path);
             }
 
-            // Store new image
             $file = $request->file('image');
             $path = $file->store('Stories', 'public');
+
             $story->publication_image_path = $path;
+        }
+
+        if ($request->hasFile('video')) {
+            if ($story->publication_video_path) {
+                Storage::disk('public')->delete($story->publication_video_path);
+            }
+
+            $videoFile = $request->file('video');
+            $videoPath = $videoFile->store('Stories/Videos', 'public');
+
+            $story->publication_video_path = $videoPath;
         }
 
         $story->save();
 
         return response()->json([
             'message' => 'Story updated successfully',
-            'story' => $story
+            'story' => $story,
+            'image_url' => $story->publication_image_path
+                ? asset('storage/' . $story->publication_image_path)
+                : null,
+            'video_url' => $story->publication_video_path
+                ? asset('storage/' . $story->publication_video_path)
+                : null,
         ]);
     }
 

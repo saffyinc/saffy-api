@@ -7,6 +7,7 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Client\ClientStoriesController;
 use App\Http\Controllers\Client\ContactUsController;
 use App\Http\Controllers\Admin\AdminGalleriesController;
+use App\Http\Controllers\Client\ClientGalleriesController;
 
 
 
@@ -45,6 +46,10 @@ Route::get('/client/stories', [ClientStoriesController::class, 'index']);
 Route::get('/validate-story', [AdminStoriesController::class, 'validateStory']);
 Route::get('/validate-gallery', [AdminGalleriesController::class, 'validateGallery']);
 Route::post('/contact-us', [ContactUsController::class, 'submitContactForm']);
+Route::get('/client/gallery', [ClientGalleriesController::class, 'index']);
+Route::get('/client/gallery/{category}', [ClientGalleriesController::class, 'getCategory']);
+
+
 
 Route::get('/test', function(){
     return "hello test only";
