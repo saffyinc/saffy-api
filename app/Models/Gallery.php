@@ -30,4 +30,9 @@ class Gallery extends Model
         return Hashids::encode($value);
     }
 
+    public function media()
+    {
+        return $this->hasMany(GalleryMedia::class, 'gallery_id', 'id');
+    }
+
 }

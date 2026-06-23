@@ -294,13 +294,14 @@ class AdminGalleriesController extends Controller
         }
 
         $gallery = Gallery::findOrFail($decodedId);
+        $galleryId = $gallery->getRawOriginal('id');
 
         $request->validate([
             'color' => 'nullable|string',
             'category' => 'nullable|in:fashion,gifts,home,kitchen,stationaries,supported,christmas,toys',
             'description' => 'nullable|string',
             'material' => 'nullable|string',
-            'product_id' => 'nullable|unique:galleries,product_id,' . $gallery->getRawOriginal('id'),
+            'product_id' => 'nullable|unique:galleries,product_id,' . $galleryId,
             'shape' => 'nullable|string',
             'size' => 'nullable|string',
             'title' => 'nullable|string',
@@ -309,6 +310,15 @@ class AdminGalleriesController extends Controller
             'media' => 'nullable|array',
             'media.*' => 'required|file|mimes:jpg,jpeg,png,webp,mp4,webm,mov',
             'thumbnail_index' => 'nullable|integer|min:0',
+
+            'removed_media_ids' => 'nullable|array',
+            'removed_media_ids.*' => 'nullable|integer',
+
+            'removed_media_paths' => 'nullable|array',
+            'removed_media_paths.*' => 'nullable|string',
+
+            'thumbnail_existing_id' => 'nullable|integer',
+            'thumbnail_existing_path' => 'nullable|string',
         ]);
 
         $mediaFiles = $request->file('media', []);
@@ -324,116 +334,197 @@ class AdminGalleriesController extends Controller
                 ], 400);
             }
 
-            $thumbnailIndex = (int) $request->input('thumbnail_index', 0);
+            if ($request->filled('thumbnail_index')) {
+                $thumbnailIndex = (int) $request->input('thumbnail_index');
 
-            if (!isset($mediaFiles[$thumbnailIndex])) {
-                return response()->json([
-                    'error' => 'Invalid thumbnail selected.'
-                ], 400);
-            }
+                if (!isset($mediaFiles[$thumbnailIndex])) {
+                    return response()->json([
+                        'error' => 'Invalid thumbnail selected.'
+                    ], 400);
+                }
 
-            if (!str_starts_with($mediaFiles[$thumbnailIndex]->getMimeType(), 'image/')) {
-                return response()->json([
-                    'error' => 'Thumbnail must be an image.'
-                ], 400);
+                if (!str_starts_with($mediaFiles[$thumbnailIndex]->getMimeType(), 'image/')) {
+                    return response()->json([
+                        'error' => 'Thumbnail must be an image.'
+                    ], 400);
+                }
             }
         }
 
         DB::beginTransaction();
 
+        $newStoredPaths = [];
+        $oldPathsToDelete = [];
+
         try {
-            if ($request->filled('color')) {
-                $gallery->color = $request->color;
+            $fields = [
+                'color',
+                'category',
+                'description',
+                'material',
+                'product_id',
+                'shape',
+                'size',
+                'title',
+                'weight',
+            ];
+
+            foreach ($fields as $field) {
+                if ($request->has($field)) {
+                    $gallery->{$field} = $request->input($field);
+                }
             }
 
-            if ($request->filled('category')) {
-                $gallery->category = $request->category;
-            }
+            /*
+            |--------------------------------------------------------------------------
+            | Remove selected existing media only
+            |--------------------------------------------------------------------------
+            */
+            $removedIds = array_filter($request->input('removed_media_ids', []));
+            $removedPaths = array_filter($request->input('removed_media_paths', []));
 
-            if ($request->filled('description')) {
-                $gallery->description = $request->description;
-            }
+            if (!empty($removedIds) || !empty($removedPaths)) {
+                $mediaToRemove = GalleryMedia::where('gallery_id', $galleryId)
+                    ->where(function ($query) use ($removedIds, $removedPaths) {
+                        if (!empty($removedIds)) {
+                            $query->whereIn('id', $removedIds);
+                        }
 
-            if ($request->filled('material')) {
-                $gallery->material = $request->material;
-            }
-
-            if ($request->filled('product_id')) {
-                $gallery->product_id = $request->product_id;
-            }
-
-            if ($request->filled('shape')) {
-                $gallery->shape = $request->shape;
-            }
-
-            if ($request->filled('size')) {
-                $gallery->size = $request->size;
-            }
-
-            if ($request->filled('title')) {
-                $gallery->title = $request->title;
-            }
-
-            if ($request->filled('weight')) {
-                $gallery->weight = $request->weight;
-            }
-
-            if (count($mediaFiles) > 0) {
-                $galleryId = $gallery->getRawOriginal('id');
-
-                $oldMedia = DB::table('gallery_media')
-                    ->where('gallery_id', $galleryId)
+                        if (!empty($removedPaths)) {
+                            $query->orWhereIn('media_path', $removedPaths);
+                        }
+                    })
                     ->get();
 
-                foreach ($oldMedia as $oldItem) {
-                    if ($oldItem->media_path) {
-                        Storage::disk('public')->delete($oldItem->media_path);
+                foreach ($mediaToRemove as $media) {
+                    if ($media->media_path) {
+                        $oldPathsToDelete[] = $media->media_path;
                     }
-                }
 
-                DB::table('gallery_media')
-                    ->where('gallery_id', $galleryId)
-                    ->delete();
-
-                $storedMedia = [];
-                $thumbnailIndex = (int) $request->input('thumbnail_index', 0);
-
-                foreach ($mediaFiles as $index => $file) {
-                    $path = $file->store('Gallery', 'public');
-
-                    $storedMedia[$index] = [
-                        'path' => $path,
-                        'type' => str_starts_with($file->getMimeType(), 'video/') ? 'video' : 'image',
-                    ];
-                }
-
-                if ($gallery->img_path) {
-                    Storage::disk('public')->delete($gallery->img_path);
-                }
-
-                $gallery->img_path = $storedMedia[$thumbnailIndex]['path'];
-
-                foreach ($storedMedia as $index => $media) {
-                    GalleryMedia::create([
-                        'gallery_id' => $galleryId,
-                        'media_path' => $media['path'],
-                        'media_type' => $media['type'],
-                        'is_thumbnail' => $index === $thumbnailIndex,
-                    ]);
+                    $media->delete();
                 }
             }
 
+            /*
+            |--------------------------------------------------------------------------
+            | Append new media
+            |--------------------------------------------------------------------------
+            */
+            $createdMedia = [];
+
+            foreach ($mediaFiles as $index => $file) {
+                $path = $file->store('Gallery', 'public');
+
+                $newStoredPaths[] = $path;
+
+                $createdMedia[$index] = GalleryMedia::create([
+                    'gallery_id' => $galleryId,
+                    'media_path' => $path,
+                    'media_type' => str_starts_with($file->getMimeType(), 'video/')
+                        ? 'video'
+                        : 'image',
+                    'is_thumbnail' => false,
+                ]);
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | Resolve selected thumbnail
+            |--------------------------------------------------------------------------
+            */
+            $thumbnailMedia = null;
+
+            if ($request->filled('thumbnail_existing_id')) {
+                $thumbnailMedia = GalleryMedia::where('gallery_id', $galleryId)
+                    ->where('id', $request->input('thumbnail_existing_id'))
+                    ->first();
+            }
+
+            if (!$thumbnailMedia && $request->filled('thumbnail_existing_path')) {
+                $thumbnailMedia = GalleryMedia::where('gallery_id', $galleryId)
+                    ->where('media_path', $request->input('thumbnail_existing_path'))
+                    ->first();
+            }
+
+            if (!$thumbnailMedia && $request->filled('thumbnail_index')) {
+                $thumbnailIndex = (int) $request->input('thumbnail_index');
+                $thumbnailMedia = $createdMedia[$thumbnailIndex] ?? null;
+            }
+
+            // Keep current thumbnail if still existing
+            if (!$thumbnailMedia && $gallery->img_path) {
+                $thumbnailMedia = GalleryMedia::where('gallery_id', $galleryId)
+                    ->where('media_path', $gallery->img_path)
+                    ->where('media_type', 'image')
+                    ->first();
+            }
+
+            // Fallback to current marked thumbnail
+            if (!$thumbnailMedia) {
+                $thumbnailMedia = GalleryMedia::where('gallery_id', $galleryId)
+                    ->where('is_thumbnail', true)
+                    ->where('media_type', 'image')
+                    ->first();
+            }
+
+            // Final fallback to first image
+            if (!$thumbnailMedia) {
+                $thumbnailMedia = GalleryMedia::where('gallery_id', $galleryId)
+                    ->where('media_type', 'image')
+                    ->first();
+            }
+
+            if (!$thumbnailMedia) {
+                DB::rollBack();
+
+                foreach ($newStoredPaths as $path) {
+                    Storage::disk('public')->delete($path);
+                }
+
+                return response()->json([
+                    'error' => 'At least one image is required for the gallery thumbnail.'
+                ], 400);
+            }
+
+            if ($thumbnailMedia->media_type !== 'image') {
+                DB::rollBack();
+
+                foreach ($newStoredPaths as $path) {
+                    Storage::disk('public')->delete($path);
+                }
+
+                return response()->json([
+                    'error' => 'Thumbnail must be an image.'
+                ], 400);
+            }
+
+            GalleryMedia::where('gallery_id', $galleryId)->update([
+                'is_thumbnail' => false,
+            ]);
+
+            $thumbnailMedia->is_thumbnail = true;
+            $thumbnailMedia->save();
+
+            $gallery->img_path = $thumbnailMedia->media_path;
             $gallery->save();
 
             DB::commit();
 
+            foreach ($oldPathsToDelete as $path) {
+                Storage::disk('public')->delete($path);
+            }
+
             return response()->json([
                 'message' => 'Gallery updated successfully',
-                'gallery' => $gallery,
+                'gallery' => $gallery->load('media'),
             ], 200);
 
         } catch (\Throwable $th) {
             DB::rollBack();
+
+            foreach ($newStoredPaths as $path) {
+                Storage::disk('public')->delete($path);
+            }
 
             return response()->json([
                 'message' => $th->getMessage(),
