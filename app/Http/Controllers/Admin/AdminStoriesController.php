@@ -150,7 +150,7 @@ class AdminStoriesController extends Controller
             'timeRange' => 'nullable|string',
             'title' => 'nullable|string',
             'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
-            'video' => 'nullable|file|mimes:mp4,webm,ogg,mov|max:102400',
+            'video' => 'nullable|file|mimes:mp4,webm,ogg,mov|max:51200',
         ]);
 
         $decodedId = HashIds::decode($id)[0] ?? null;
