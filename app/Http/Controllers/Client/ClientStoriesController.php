@@ -11,6 +11,6 @@ class ClientStoriesController extends Controller
     //
 
     public function index(){
-        return Stories::orderBy('id', 'desc')->get();
+        return Stories::orderBy('id', 'desc')->where('isArchive', 0)->get();
     }
 }

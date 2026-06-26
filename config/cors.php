@@ -19,7 +19,7 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => [env('FRONTEND_URL', 'http://localhost:3000'), env('DEPLOYED_FRONTEND_URL')],
+    'allowed_origins' => [env('FRONTEND_URL', 'http://localhost:3000'), env('DEPLOYED_FRONTEND_URL'), 'https://saffy-client-production-40e4.up.railway.app'],
 
     'allowed_origins_patterns' => [],
 

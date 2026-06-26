@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use App\Models\Gallery;
 
 return new class extends Migration
 {
@@ -11,15 +12,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('stories', function (Blueprint $table) {
+        Schema::create('gallery_media', function (Blueprint $table) {
             $table->id();
-            $table->enum('type', ['news', 'stories']);
-            $table->string('title');
-            $table->string('author');
-            $table->date('publish_date');
-            $table->string('reading_time');
-            $table->string('publication_image_path');
-            $table->text('content');
+            $table->foreignId('gallery_id')->constrained('galleries')->cascadeOnDelete();
+            $table->string('media_path');
+            $table->string('media_type');
+            $table->boolean('is_thumbnail');
             $table->timestamps();
         });
     }
@@ -29,6 +27,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('stories');
+        Schema::dropIfExists('gallery_media');
     }
 };
